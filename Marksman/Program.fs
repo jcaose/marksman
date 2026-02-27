@@ -10,6 +10,7 @@ open Serilog
 module MS = Marksman.Server
 
 open FSharp.SystemCommandLine
+open Marksman.Check
 open Marksman.Misc
 
 let configureLogging (verbosity: int) : unit =
@@ -99,8 +100,36 @@ let main args =
             setAction startLSP
         }
 
+    let checkPath =
+        Input.argument "[PATH]"
+        |> Input.defaultValue "."
+        |> Input.desc "Workspace root directory to check (default: current directory)"
+
+    let checkFormat =
+        Input.option "--format"
+        |> Input.defaultValue "text"
+        |> Input.desc "Output format: 'text' (default) or 'json'"
+
+    let runCheck (args: string * string) : int =
+        let path, fmt = args
+
+        let format =
+            match fmt.ToLower() with
+            | "json" -> OutputFormat.Json
+            | _ -> OutputFormat.Text
+
+        Check.check path format
+
+    let checkCommand =
+        command "check" {
+            description "Check workspace for broken links and other issues"
+            inputs (checkPath, checkFormat)
+            setAction runCheck
+        }
+
     rootCommand args {
         description "Marksman is a language server for Markdown"
         setAction (fun () -> startLSP (2, false))
         addCommand lspCommand
+        addCommand checkCommand
     }
