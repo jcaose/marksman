@@ -4,6 +4,7 @@ open Ionide.LanguageServerProtocol.Types
 
 open Marksman.Misc
 open Marksman.Names
+open Marksman.Paths
 open Marksman.Doc
 open Marksman.Folder
 open Marksman.Workspace
@@ -54,6 +55,7 @@ let checkLink
     (linkEl: Element)
     : seq<Entry> =
     let exts = Folder.configuredMarkdownExts folder
+    let attachExts = Folder.configuredAttachmentExts folder
 
     let ref =
         doc.Structure
@@ -85,6 +87,15 @@ let checkLink
                     else
                         []
                 | _ -> [ BrokenLink(linkEl, ref) ]
+            | WL { data = wl } when wl.isEmbed ->
+                // Suppress broken-link diagnostics for embed links (![[...]]) pointing to
+                // attachment extensions even when the file is missing
+                let isEmbedToAttachment =
+                    wl.doc
+                    |> Option.map (fun n -> WikiEncoded.decode n.data)
+                    |> Option.exists (fun name -> Misc.isAttachmentFile attachExts name)
+
+                if isEmbedToAttachment then [] else [ BrokenLink(linkEl, ref) ]
             | _ -> [ BrokenLink(linkEl, ref) ]
         else
             [ AmbiguousLink(linkEl, ref, refs) ]
@@ -109,6 +120,7 @@ let checkFolder (folder: Folder) (extraFolders: seq<Folder>) : seq<DocId * list<
 let destToHuman (ref: Dest) : string =
     match ref with
     | Dest.Doc { doc = doc } -> $"document {Doc.name doc}"
+    | Dest.Attachment(relPath, _) -> $"attachment {RelPath.toSystem relPath}"
     | Dest.Heading(docLink, { data = heading }) ->
         $"heading {Heading.name heading} in the document {Doc.name (DocLink.doc docLink)}"
     | Dest.LinkDef(_, { data = ld }) -> $"link definition {MdLinkDef.name ld}"

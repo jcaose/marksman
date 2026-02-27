@@ -9,6 +9,7 @@ open Marksman.Names
 open Marksman.Paths
 open Marksman.Doc
 open Marksman.Folder
+open Marksman.Refs
 
 let entryToHuman (entry: Entry) =
     let lsp = diagToLsp entry
@@ -331,3 +332,62 @@ let noTransitiveExtraFolderResolution () =
         [ "doc-a.md", "Link to non-existent document 'doc-c'" ],
         checkFolder folderA [ folderB ] |> diagToHuman
     )
+
+// ── Attachment file link diagnostics ─────────────────────────────────────────
+
+[<Fact>]
+let noDiagForExistingAttachment () =
+    let doc = FakeDoc.Mk([| "[[image.png]]" |])
+    let folder = FakeFolder.Mk([ doc ]) |> Folder.withAttachment (RelPath "image.png")
+    let diag = checkFolder folder Seq.empty |> diagToHuman
+
+    Assert.Equal<string * string>([], diag)
+
+[<Fact>]
+let diagForMissingAttachment () =
+    let doc = FakeDoc.Mk([| "[[image.png]]" |])
+    let folder = FakeFolder.Mk([ doc ])
+    let diag = checkFolder folder Seq.empty |> diagToHuman
+
+    Assert.Equal<string * string>(
+        [ "fake.md", "Link to non-existent document 'image.png'" ],
+        diag
+    )
+
+[<Fact>]
+let noDiagForEmbedLinkToAttachmentExtMissing () =
+    // ![[image.png]] — Markdig does not parse ![[...]] as a WikiLink (the ! causes it to be
+    // treated as an image directive). So no wiki-link diagnostic is produced regardless.
+    // This test documents that behavior.
+    let doc = FakeDoc.Mk([| "![[image.png]]" |])
+    let folder = FakeFolder.Mk([ doc ])
+    let diag = checkFolder folder Seq.empty |> diagToHuman
+
+    Assert.Equal<string * string>([], diag)
+
+[<Fact>]
+let diagForMissingAttachmentWithMdExt () =
+    // [[something.md]] (not embed) — a wiki link pointing to a non-existent markdown file
+    // should still show a broken-link diagnostic
+    let doc = FakeDoc.Mk([| "[[something.md]]" |])
+    let folder = FakeFolder.Mk([ doc ])
+    let diag = checkFolder folder Seq.empty |> diagToHuman
+
+    Assert.Equal<string * string>(
+        [ "fake.md", "Link to non-existent document 'something.md'" ],
+        diag
+    )
+
+[<Fact>]
+let destAttachmentForExistingFile () =
+    let doc = FakeDoc.Mk([| "[[diagram.pdf]]" |])
+    let folder = FakeFolder.Mk([ doc ]) |> Folder.withAttachment (RelPath "diagram.pdf")
+
+    let links = Doc.index doc |> Index.links |> Array.ofSeq
+    let link = links |> Array.head
+    let dests = Dest.tryResolveElement folder Seq.empty doc link |> Array.ofSeq
+
+    match dests with
+    | [| Dest.Attachment(relPath, _) |] ->
+        Assert.Equal("diagram.pdf", RelPath.toSystem relPath)
+    | _ -> failwith $"Expected Dest.Attachment, got: {dests}"

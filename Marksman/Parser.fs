@@ -298,7 +298,10 @@ module Markdown =
                         |> Some
                     | _ -> None
 
-                let wikiLink: WikiLink = { doc = doc; heading = heading }
+                let isEmbed =
+                    link.Span.Start > 0 && text.content.[link.Span.Start - 1] = '!'
+
+                let wikiLink: WikiLink = { doc = doc; heading = heading; isEmbed = isEmbed }
                 let range = sourceSpanToRange text link.Span
                 let xref = Node.mk link.Text range wikiLink
                 elements.Add(WL xref)

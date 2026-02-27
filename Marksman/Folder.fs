@@ -20,6 +20,7 @@ type MultiFile = {
     name: string
     root: FolderId
     docs: Map<CanonDocPath, Doc>
+    attachments: Set<RelPath>
     config: option<Config>
     extraFolderRoots: AbsPath[]
 } with
@@ -46,6 +47,10 @@ module FolderData =
         | SingleFile { doc = doc } -> Seq.singleton doc
         | MultiFile { docs = docs } -> Map.values docs
 
+    let attachments data =
+        match data with
+        | SingleFile _ -> Set.empty
+        | MultiFile { attachments = a } -> a
 
     let tryFindDocByRelPath (path: RelPath) data : option<Doc> =
         match data with
@@ -396,6 +401,43 @@ module Folder =
             GlobMatcher.mkDefault (RootPath.toSystem folderId.data)
         ]
 
+    let private loadAttachments (attachExts: seq<string>) (folderId: FolderId) : Set<RelPath> =
+        let rootSys = RootPath.toSystem folderId.data
+
+        let rec collect (cur: LocalPath) (ignoreMatchers: list<GlobMatcher>) =
+            let ignoreMatchers =
+                match readIgnoreFiles cur with
+                | [||] -> ignoreMatchers
+                | pats -> GlobMatcher.mk (LocalPath.toSystem cur) pats :: ignoreMatchers
+
+            let di = DirectoryInfo(LocalPath.toSystem cur)
+
+            try
+                let files = di.GetFiles()
+                let dirs = di.GetDirectories()
+
+                seq {
+                    for file in files do
+                        if
+                            (isAttachmentFile attachExts file.FullName)
+                            && not (GlobMatcher.ignoresAny ignoreMatchers file.FullName)
+                        then
+                            let rel = Path.GetRelativePath(rootSys, file.FullName)
+                            yield RelPath rel
+
+                    for dir in dirs do
+                        if not (GlobMatcher.ignoresAny ignoreMatchers dir.FullName) then
+                            yield! collect (LocalPath.ofSystem dir.FullName) ignoreMatchers
+                }
+            with
+            | :? UnauthorizedAccessException
+            | :? DirectoryNotFoundException -> Seq.empty
+
+        collect (RootPath.toLocal folderId.data) [
+            GlobMatcher.mkDefault (RootPath.toSystem folderId.data)
+        ]
+        |> Set.ofSeq
+
     let private tryLoadFolderConfig (folderId: FolderId) : option<Config> =
         let folderConfigPath =
             RootPath.appendFile folderId.data ".marksman.toml" |> AbsPath.toSystem
@@ -513,6 +555,30 @@ module Folder =
                     name = name
                     root = root
                     docs = byCanonPath
+                    attachments = Set.empty
+                    config = config
+                    extraFolderRoots = [||]
+                }
+            )
+
+        mk data
+
+    let multiFileWithAttachments name root (docs: seq<Doc>) (attachments: Set<RelPath>) config =
+        let byCanonPath =
+            docs
+            |> Seq.map (fun doc ->
+                Doc.pathFromRoot doc
+                |> CanonDocPath.mk ((Config.orDefault config).CoreMarkdownFileExtensions()),
+                doc)
+            |> Map.ofSeq
+
+        let data =
+            MultiFile(
+                {
+                    name = name
+                    root = root
+                    docs = byCanonPath
+                    attachments = attachments
                     config = config
                     extraFolderRoots = [||]
                 }
@@ -541,12 +607,16 @@ module Folder =
             let folderConfig = tryLoadFolderConfig folderId
             let folderConfig = Config.mergeOpt folderConfig userConfig
 
-            let parserSettings =
-                ParserSettings.OfConfig(Option.defaultValue Config.Default folderConfig)
+            let effectiveConfig = Option.defaultValue Config.Default folderConfig
+
+            let parserSettings = ParserSettings.OfConfig(effectiveConfig)
 
             let documents = loadDocs parserSettings folderId
 
-            let folder = multiFile name folderId documents folderConfig
+            let attachExts = effectiveConfig.CoreAttachmentFileExtensions() |> Seq.ofArray
+            let attachments = loadAttachments attachExts folderId
+
+            let folder = multiFileWithAttachments name folderId documents attachments folderConfig
 
             // Resolve extra folder paths from the merged config
             let extraFolderRoots =
@@ -733,3 +803,43 @@ module Folder =
 
     let configuredMarkdownExts folder =
         (configOrDefault folder).CoreMarkdownFileExtensions() |> Seq.ofArray
+
+    let configuredAttachmentExts folder =
+        (configOrDefault folder).CoreAttachmentFileExtensions() |> Seq.ofArray
+
+    let attachments folder = FolderData.attachments folder.data
+
+    let withAttachment (relPath: RelPath) (folder: Folder) : Folder =
+        match folder.data with
+        | MultiFile mf ->
+            let data = MultiFile { mf with attachments = Set.add relPath mf.attachments }
+            mk data
+        | SingleFile _ -> folder
+
+    let withoutAttachment (relPath: RelPath) (folder: Folder) : Folder =
+        match folder.data with
+        | MultiFile mf ->
+            let data = MultiFile { mf with attachments = Set.remove relPath mf.attachments }
+            mk data
+        | SingleFile _ -> folder
+
+    let tryFindAttachmentByInternName (name: InternName) (folder: Folder) : option<RelPath> =
+        let atts = attachments folder
+
+        if Set.isEmpty atts then
+            None
+        else
+            match InternName.tryAsPath name with
+            | None -> None
+            | Some internPath ->
+                let relPath = InternPath.toRel internPath
+                // Exact match first
+                if Set.contains relPath atts then
+                    Some relPath
+                else
+                    // Filename-only suffix match
+                    let targetFilename = RelPath.filename relPath
+
+                    atts
+                    |> Set.toSeq
+                    |> Seq.tryFind (fun ap -> RelPath.filename ap = targetFilename)

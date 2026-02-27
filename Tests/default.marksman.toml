@@ -36,6 +36,14 @@ incremental_references = false
 paranoid = false
 # Extra folders to include in link resolution (supports absolute and relative paths)
 # extra_folders = []
+# File extensions treated as attachments (images, audio, video, PDFs).
+# Links to attachment files are not flagged as broken links.
+attachment_file_extensions = [
+  "png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "avif",
+  "mp3", "wav", "ogg", "flac", "m4a", "3gp",
+  "mp4", "mov", "mkv", "ogv", "webm",
+  "pdf"
+]
 
 [code_action]
 # Enable/disable "Table of Contents" code action

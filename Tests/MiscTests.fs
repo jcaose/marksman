@@ -111,6 +111,35 @@ module LinkLabelTest =
     let surroundingWhitespace () =
         Assert.Equal(LinkLabel.ofString "abc", LinkLabel.ofString "  abc ")
 
+module IsAttachmentFileTests =
+    let defaultAttachExts =
+        Marksman.Config.Config.Default.CoreAttachmentFileExtensions() |> Seq.ofArray
+
+    [<Fact>]
+    let imageExtensionsAreAttachments () =
+        Assert.True(isAttachmentFile defaultAttachExts "image.png")
+        Assert.True(isAttachmentFile defaultAttachExts "photo.jpg")
+        Assert.True(isAttachmentFile defaultAttachExts "diagram.svg")
+        Assert.True(isAttachmentFile defaultAttachExts "document.pdf")
+
+    [<Fact>]
+    let markdownIsNotAttachment () =
+        Assert.False(isAttachmentFile defaultAttachExts "doc.md")
+        Assert.False(isAttachmentFile defaultAttachExts "doc.markdown")
+
+    [<Fact>]
+    let caseInsensitive () =
+        Assert.True(isAttachmentFile defaultAttachExts "IMAGE.PNG")
+        Assert.True(isAttachmentFile defaultAttachExts "Photo.JPG")
+
+    [<Fact>]
+    let noExtensionIsNotAttachment () =
+        Assert.False(isAttachmentFile defaultAttachExts "README")
+
+    [<Fact>]
+    let emacsBackupIsNotAttachment () =
+        Assert.False(isAttachmentFile defaultAttachExts ".#image.png")
+
 module WatchGlobTest =
     [<Fact>]
     let test1 () =

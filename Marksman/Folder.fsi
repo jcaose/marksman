@@ -19,10 +19,15 @@ module Folder =
     val withConfig: option<Config> -> Folder -> Folder
 
     val configuredMarkdownExts: Folder -> seq<string>
+    val configuredAttachmentExts: Folder -> seq<string>
     val parserSettings: Folder -> ParserSettings
 
     val docs: Folder -> seq<Doc>
     val docCount: Folder -> int
+    val attachments: Folder -> Set<RelPath>
+    val withAttachment: RelPath -> Folder -> Folder
+    val withoutAttachment: RelPath -> Folder -> Folder
+    val tryFindAttachmentByInternName: InternName -> Folder -> option<RelPath>
 
     val checkWorkspaceFolderWithWarn: FolderId -> bool
     val tryLoad: userConfig: option<Config> -> name: string -> FolderId -> option<Folder>

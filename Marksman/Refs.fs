@@ -113,17 +113,33 @@ module DocLink =
 [<RequireQualifiedAccess>]
 type Dest =
     | Doc of FileLink
+    | Attachment of RelPath * Folder
     | Heading of DocLink * Cst.Node<Cst.Heading>
     | LinkDef of Doc * Cst.Node<Cst.MdLinkDef>
     | Tag of Doc * Cst.Node<Cst.Tag>
 
 module Dest =
+    let tryDoc: Dest -> option<Doc> =
+        function
+        | Dest.Doc { doc = doc }
+        | Dest.LinkDef(doc, _) -> Some doc
+        | Dest.Heading(docLink, _) -> Some(DocLink.doc docLink)
+        | Dest.Tag(doc, _) -> Some doc
+        | Dest.Attachment _ -> None
+
     let doc: Dest -> Doc =
         function
         | Dest.Doc { doc = doc }
         | Dest.LinkDef(doc, _) -> doc
         | Dest.Heading(docLink, _) -> DocLink.doc docLink
         | Dest.Tag(doc, _) -> doc
+        | Dest.Attachment _ -> failwith "Dest.Attachment has no Doc"
+
+    let absPath: Dest -> option<AbsPath> =
+        function
+        | Dest.Attachment(relPath, folder) ->
+            Some(RootPath.append (Folder.rootPath folder) relPath)
+        | _ -> None
 
     let range: Dest -> Range =
         function
@@ -134,6 +150,7 @@ module Dest =
         | Dest.Heading(_, heading) -> heading.range
         | Dest.LinkDef(_, linkDef) -> linkDef.range
         | Dest.Tag(_, tag) -> tag.range
+        | Dest.Attachment _ -> Range.Mk(0, 0, 0, 0)
 
     let scope: Dest -> Range =
         function
@@ -141,8 +158,13 @@ module Dest =
         | Dest.Heading(_, heading) -> heading.data.scope
         | Dest.LinkDef(_, linkDef) -> linkDef.range
         | Dest.Tag(_, tag) -> tag.range
+        | Dest.Attachment _ -> Range.Mk(0, 0, 0, 0)
 
-    let uri (ref: Dest) : DocumentUri = doc ref |> Doc.uri
+    let uri (ref: Dest) : DocumentUri =
+        match ref with
+        | Dest.Attachment(relPath, folder) ->
+            RootPath.append (Folder.rootPath folder) relPath |> AbsPath.toUri
+        | _ -> doc ref |> Doc.uri
 
     let location (ref: Dest) : Location = { Uri = uri ref; Range = range ref }
 
@@ -217,6 +239,16 @@ module Dest =
                                 |> Seq.map (fun node -> Dest.Heading(docLink, node)))
             }
 
+    let private tryResolveAsAttachment (folder: Folder) (doc: Doc) (srcSym: Sym) : seq<Dest> =
+        match Sym.asRef srcSym with
+        | Some(CrossRef(CrossDoc name)) ->
+            let internName = InternName.mkUnchecked doc.Id name
+
+            match Folder.tryFindAttachmentByInternName internName folder with
+            | Some relPath -> Seq.singleton (Dest.Attachment(relPath, folder))
+            | None -> Seq.empty
+        | _ -> Seq.empty
+
     let tryResolveSym
         (folder: Folder)
         (extraFolders: seq<Folder>)
@@ -262,9 +294,16 @@ module Dest =
             |> Array.ofSeq
 
         if Array.isEmpty primaryResults then
-            // Fall back to cross-folder resolution
-            extraFolders
-            |> Seq.collect (tryResolveSymInExtraFolder complStyle doc.Id srcSym)
+            // Fall back to cross-folder resolution, then attachment resolution
+            let extraFolderResults =
+                extraFolders
+                |> Seq.collect (tryResolveSymInExtraFolder complStyle doc.Id srcSym)
+                |> Array.ofSeq
+
+            if Array.isEmpty extraFolderResults then
+                tryResolveAsAttachment folder doc srcSym
+            else
+                Seq.ofArray extraFolderResults
         else
             Seq.ofArray primaryResults
 

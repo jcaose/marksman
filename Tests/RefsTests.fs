@@ -543,6 +543,7 @@ module EncodingTests =
         | Dest.Tag(doc, node) ->
             let tag = node.text
             $"{Doc.name doc} / {tag}"
+        | Dest.Attachment(relPath, _folder) -> $"attachment: {RelPath.toSystem relPath}"
 
     let resolveAtPos doc line col =
         let el = requireElementAtPos doc line col

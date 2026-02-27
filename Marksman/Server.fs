@@ -86,6 +86,7 @@ module ServerUtil =
 
     let mkServerCaps
         (markdownExts: array<string>)
+        (attachmentExts: array<string>)
         (textSyncKind: TextSync)
         (par: InitializeParams)
         : ServerCapabilities =
@@ -106,10 +107,26 @@ module ServerUtil =
             Filters = [| { Scheme = None; Pattern = markdownFilePattern } |]
         }
 
+        let attachGlob = mkWatchGlob attachmentExts
+
+        let attachFilePattern = {
+            Glob = attachGlob
+            Matches = Some FileOperationPatternKind.File
+            Options = Some { IgnoreCase = Some true }
+        }
+
+        let combinedRegistration = {
+            Filters =
+                [|
+                    { Scheme = None; Pattern = markdownFilePattern }
+                    { Scheme = None; Pattern = attachFilePattern }
+                |]
+        }
+
         let workspaceFileCaps = {
             WorkspaceFileOperationsServerCapabilities.Default with
-                DidCreate = Some markdownFileRegistration
-                DidDelete = Some markdownFileRegistration
+                DidCreate = Some combinedRegistration
+                DidDelete = Some combinedRegistration
                 // VSCode behaves weirdly when communicating file renames, so let's turn this off.
                 // Anyway, when the file is renamed VSCode sends
                 // - didClose on the old name, and
@@ -545,6 +562,12 @@ type MarksmanServer(client: MarksmanClient) =
                 |> Seq.distinct
                 |> Array.ofSeq
 
+            let configuredAttachmentExts =
+                Workspace.folders workspace
+                |> Seq.collect Folder.configuredAttachmentExts
+                |> Seq.distinct
+                |> Array.ofSeq
+
             let textSyncKindSource, textSyncKind =
                 ServerUtil.calcTextSync userConfig workspace clientDesc
 
@@ -554,7 +577,8 @@ type MarksmanServer(client: MarksmanClient) =
                 >> Log.addContext "kind" textSyncKind
             )
 
-            let serverCaps = ServerUtil.mkServerCaps configuredExts textSyncKind par
+            let serverCaps =
+                ServerUtil.mkServerCaps configuredExts configuredAttachmentExts textSyncKind par
 
             let initResult = { InitializeResult.Default with Capabilities = serverCaps }
 
@@ -772,8 +796,9 @@ type MarksmanServer(client: MarksmanClient) =
                 | None -> ()
                 | Some folder ->
                     let parserSettings = Folder.parserSettings folder
+                    let filePath = AbsPath.toSystem docUri.data
 
-                    if isMarkdownFile parserSettings.mdFileExt (AbsPath.toSystem docUri.data) then
+                    if isMarkdownFile parserSettings.mdFileExt filePath then
                         match Doc.tryLoad parserSettings (Folder.id folder) (Abs docUri.data) with
                         | Some doc ->
                             let newFolder = Folder.withDoc doc folder
@@ -785,6 +810,12 @@ type MarksmanServer(client: MarksmanClient) =
                             )
 
                             ()
+                    elif isAttachmentFile (Folder.configuredAttachmentExts folder) filePath then
+                        let rootSys = RootPath.toSystem (Folder.rootPath folder)
+                        let relSys = System.IO.Path.GetRelativePath(rootSys, filePath)
+                        let relPath = RelPath relSys
+                        let newFolder = Folder.withAttachment relPath folder
+                        newState <- State.updateFolder newFolder newState
 
             Mutation.state newState
 
@@ -801,12 +832,24 @@ type MarksmanServer(client: MarksmanClient) =
                     >> Log.addContext "uri" uri
                 )
 
+                let filePath = AbsPath.toSystem uri.data
+
                 match State.tryFindFolderAndDoc uri state with
-                | None -> ()
                 | Some(folder, doc) ->
                     match Folder.withoutDoc (Doc.id doc) folder with
                     | None -> newState <- State.removeFolder (Folder.id folder) newState
                     | Some newFolder -> newState <- State.updateFolder newFolder newState
+                | None ->
+                    // Check if it's an attachment file
+                    match State.tryFindFolderEnclosing uri newState with
+                    | None -> ()
+                    | Some folder ->
+                        if isAttachmentFile (Folder.configuredAttachmentExts folder) filePath then
+                            let rootSys = RootPath.toSystem (Folder.rootPath folder)
+                            let relSys = System.IO.Path.GetRelativePath(rootSys, filePath)
+                            let relPath = RelPath relSys
+                            let newFolder = Folder.withoutAttachment relPath folder
+                            newState <- State.updateFolder newFolder newState
 
             Mutation.state newState
 
@@ -931,7 +974,7 @@ type MarksmanServer(client: MarksmanClient) =
                     let locs =
                         refs
                         |> Seq.map (fun ref -> {
-                            Uri = ref |> Dest.doc |> Doc.uri
+                            Uri = Dest.uri ref
                             Range = (Dest.range ref)
                         })
                         |> Array.ofSeq
@@ -962,12 +1005,15 @@ type MarksmanServer(client: MarksmanClient) =
                     let! ref =
                         Dest.tryResolveElement folder extraFolders srcDoc atPos |> Seq.tryHead
 
-                    let destScope = Dest.scope ref
-
                     let content =
-                        (Dest.doc >> Doc.text <| ref).Substring destScope
-                        |> markdown
-                        |> MarkupContent
+                        match ref with
+                        | Dest.Attachment(relPath, _) ->
+                            RelPath.toSystem relPath |> markdown |> MarkupContent
+                        | _ ->
+                            let destScope = Dest.scope ref
+                            (Dest.doc >> Doc.text <| ref).Substring destScope
+                            |> markdown
+                            |> MarkupContent
 
                     let hover = { Contents = content; Range = None }
 
