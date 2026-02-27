@@ -32,7 +32,11 @@ module Node =
     let fmtOptUrl (node: option<UrlEncodedNode>) : string = fmtOption fmtUrl node
     let fmtOptWiki (node: option<WikiEncodedNode>) : string = fmtOption fmtWiki node
 
-type WikiLink = { doc: option<WikiEncodedNode>; heading: option<WikiEncodedNode> }
+type WikiLink = {
+    doc: option<WikiEncodedNode>
+    heading: option<WikiEncodedNode>
+    isEmbed: bool
+}
 
 type WikiDest =
     | WTitle of string

@@ -7,6 +7,7 @@ open Marksman.Doc
 open Marksman.Folder
 open Marksman.Cst
 open Marksman.Names
+open Marksman.Paths
 
 type InternNameNode = Node<InternName>
 
@@ -41,14 +42,18 @@ module DocLink =
 [<RequireQualifiedAccess>]
 type Dest =
     | Doc of FileLink
+    | Attachment of RelPath * Folder
     | Heading of DocLink * Node<Heading>
     | LinkDef of Doc * Node<MdLinkDef>
     | Tag of Doc * Node<Tag>
 
 module Dest =
+    val tryDoc: Dest -> option<Doc>
     val doc: Dest -> Doc
+    val absPath: Dest -> option<AbsPath>
     val range: Dest -> Range
     val scope: Dest -> Range
+    val uri: Dest -> string
     val location: Dest -> Location
 
     val tryResolveSym: Folder -> Doc -> Syms.Sym -> seq<Dest>

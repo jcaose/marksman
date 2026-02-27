@@ -4,9 +4,11 @@ open Ionide.LanguageServerProtocol.Types
 
 open Marksman.Config
 open Marksman.Misc
+open Marksman.Paths
 open Marksman.Cst
 open Marksman.Names
 open Marksman.Doc
+open Marksman.Index
 open Marksman.Refs
 open Marksman.Folder
 open Marksman.Structure
@@ -181,6 +183,72 @@ let combineDocumentEdits (e1s: array<TextDocumentEdit>) (e2s: array<TextDocument
     |> Seq.map (fun (doc, edits) -> { TextDocument = doc; Edits = edits })
     |> Array.ofSeq
 
+let private renameAttachment
+    (supportsDocumentEdit: bool)
+    (folder: Folder)
+    (relPath: RelPath)
+    (attachFolder: Folder)
+    (newName: string)
+    : RenameResult =
+    let oldUri = RootPath.append (Folder.rootPath attachFolder) relPath |> AbsPath.toUri
+    let oldFilename = RelPath.filename relPath
+    let newFilename =
+        let ext = System.IO.Path.GetExtension(RelPath.toSystem relPath)
+
+        let stemIsExtensionless =
+            newName.EndsWith(ext, System.StringComparison.OrdinalIgnoreCase)
+
+        if stemIsExtensionless then newName else newName + ext
+
+    let newRelPathStr =
+        let dir = System.IO.Path.GetDirectoryName(RelPath.toSystem relPath)
+
+        if System.String.IsNullOrEmpty(dir) then
+            newFilename
+        else
+            System.IO.Path.Combine(dir, newFilename)
+
+    let newRelPath = RelPath newRelPathStr
+    let newUri = RootPath.append (Folder.rootPath attachFolder) newRelPath |> AbsPath.toUri
+    let renameFileChange = DocumentChange.renameFile oldUri newUri
+
+    let linkEdits =
+        Folder.docs folder
+        |> Seq.collect (fun doc ->
+            Doc.index doc
+            |> Index.links
+            |> Seq.choose (fun el ->
+                match el with
+                | WL { data = wl } ->
+                    wl.doc
+                    |> Option.filter (fun n ->
+                        let decoded = WikiEncoded.decode n.data
+                        let nameFilename = System.IO.Path.GetFileName(decoded)
+                        nameFilename = oldFilename)
+                    |> Option.map (fun node ->
+                        let lspDoc = { Uri = Doc.uri doc; Version = Doc.version doc }
+                        {
+                            TextDocument = lspDoc
+                            Edits = [| { Range = node.range; NewText = newFilename } |]
+                        })
+                | _ -> None))
+        |> Array.ofSeq
+
+    let docChanges =
+        [|
+            yield renameFileChange
+            yield! linkEdits |> Array.map DocumentChange.TextDocumentEdit
+        |]
+
+    let workspaceEdit =
+        if supportsDocumentEdit then
+            { Changes = None; DocumentChanges = Some docChanges }
+        else
+            let changes = linkEdits |> Array.map DocumentChange.TextDocumentEdit
+            { Changes = None; DocumentChanges = Some changes }
+
+    Edit workspaceEdit
+
 let rename
     (supportsDocumentEdit: bool)
     (folder: Folder)
@@ -190,6 +258,19 @@ let rename
     : RenameResult =
     match Cst.elementAtPos pos (Doc.cst srcDoc) with
     | None -> Skip
+    | Some(WL { data = wl } as el) ->
+        let dests = Dest.tryResolveElement folder srcDoc el |> Array.ofSeq
+
+        match dests |> Array.tryPick (function Dest.Attachment(rp, f) -> Some(rp, f) | _ -> None) with
+        | Some(relPath, attachFolder) ->
+            if not (isValidLabel newName) then
+                Error $"Not a valid attachment name: {newName}"
+            else
+                match WikiLink.contentRange wl with
+                | Some range when range.ContainsInclusive pos ->
+                    renameAttachment supportsDocumentEdit folder relPath attachFolder newName
+                | _ -> Skip
+        | None -> Skip
     | Some(ML link as el) ->
         // Reference Links
         match MdLink.referenceLabel link.data with
@@ -257,6 +338,9 @@ let rename
 let renameRange (srcDoc: Doc) (pos: Position) : option<Range> =
     match Cst.elementAtPos pos (Doc.cst srcDoc) with
     | None -> None
+    | Some(WL { data = wl }) ->
+        WikiLink.contentRange wl
+        |> Option.filter (fun range -> range.ContainsInclusive pos)
     | Some(ML link) ->
         match MdLink.referenceLabel link.data with
         | None -> None

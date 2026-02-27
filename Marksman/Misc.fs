@@ -147,6 +147,18 @@ let isMarkdownFile (configuredExts: seq<string>) (path: string) : bool =
             let ext = ext.TrimStart('.').ToLowerInvariant()
             Seq.contains ext configuredExts
 
+let isAttachmentFile (configuredExts: seq<string>) (path: string) : bool =
+    if isEmacsBackup path then
+        false
+    else
+        let ext = Path.GetExtension path
+
+        match ext with
+        | null -> false
+        | ext ->
+            let ext = ext.TrimStart('.').ToLowerInvariant()
+            Seq.contains ext configuredExts
+
 let chopMarkdownExt (configuredExts: seq<string>) (path: string) : string =
     if isMarkdownFile configuredExts path then
         path.TrimSuffix(Path.GetExtension path)
