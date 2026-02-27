@@ -154,7 +154,7 @@ let isAttachmentFile (configuredExts: seq<string>) (path: string) : bool =
         let ext = Path.GetExtension path
 
         match ext with
-        | null -> false
+        | "" -> false  // Path.GetExtension returns "" (not null) for extensionless files
         | ext ->
             let ext = ext.TrimStart('.').ToLowerInvariant()
             Seq.contains ext configuredExts

@@ -82,8 +82,11 @@ let checkLink (folder: Folder) (doc: Doc) (linkEl: Element) : seq<Entry> =
                         []
                 | _ -> [ BrokenLink(linkEl, ref) ]
             | WL { data = wl } when wl.isEmbed ->
-                // Suppress broken-link diagnostics for embed links (![[...]]) pointing to
-                // attachment extensions even when the file is missing
+                // NOTE: this branch is currently unreachable. Markdig's image-link parser
+                // consumes the leading '!' before the WikiLinkParser sees '[[', so
+                // WikiLinkInline nodes with isEmbed=true are never produced in practice.
+                // The suppression logic is kept as forward-compatibility scaffolding for
+                // when a dedicated embed-link parser is added (see rfc-attachment-links.md).
                 let isEmbedToAttachment =
                     wl.doc
                     |> Option.map (fun n -> WikiEncoded.decode n.data)
