@@ -49,6 +49,8 @@ module FolderData =
 
     let attachments data =
         match data with
+        // Single-file mode has no attachment index: the surrounding directory is not scanned,
+        // so attachment links in single-file LSP sessions will always appear as broken links.
         | SingleFile _ -> Set.empty
         | MultiFile { attachments = a } -> a
 
