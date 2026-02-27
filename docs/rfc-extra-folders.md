@@ -185,6 +185,70 @@ transient broken-link diagnostic that disappears automatically within the client
 coalesce window (≈100 ms in neovim) once all buffers are saved. The practical workflow is:
 rename → `:wa` → diagnostics clear. No `LspRestart` is required.
 
+## Editor Configuration
+
+### Neovim
+
+Two behaviours require client-side configuration for cross-folder rename to work correctly.
+
+#### 1. Pre-load target buffers before applying rename edits
+
+A cross-folder rename produces `workspace/applyEdit` with `documentChanges` that include
+files from the extra folder — files that may not be open in any buffer. Neovim's default
+`textDocument/rename` handler skips edits for unloaded buffers, silently dropping the
+changes.
+
+The fix is to wrap the handler to `bufload` every target URI before delegating to the
+original handler. Add this to your Neovim config (e.g. in an `nvim-lspconfig` `init`
+callback):
+
+```lua
+-- Wrap textDocument/rename to pre-load any target buffers that are not yet open.
+-- Without this, edits to files in extra_folders that aren't open are silently dropped.
+local orig_rename = vim.lsp.handlers["textDocument/rename"]
+vim.lsp.handlers["textDocument/rename"] = function(err, result, ctx, config)
+  if result and result.documentChanges then
+    for _, change in ipairs(result.documentChanges) do
+      if change.textDocument and change.textDocument.uri then
+        local bufnr = vim.uri_to_bufnr(change.textDocument.uri)
+        vim.fn.bufload(bufnr)
+        vim.bo[bufnr].buflisted = true
+      end
+    end
+  end
+  -- Defer so bufload has fully populated buffer contents before edits are applied
+  vim.schedule(function()
+    orig_rename(err, result, ctx, config)
+  end)
+end
+```
+
+#### 2. File-watcher dynamic registration
+
+Marksman registers extra-folder file watchers via `client/registerCapability` at startup.
+This requires the client capability `workspace.didChangeWatchedFiles.dynamicRegistration =
+true`. In neovim this is enabled by default in `vim.lsp.protocol.make_client_capabilities()`,
+so no extra configuration is needed — the watcher fires automatically when you save (`:w` or
+`:wa`) a file in an extra folder, re-syncing the index without an `LspRestart`.
+
+### VS Code
+
+VS Code handles `workspace/applyEdit` atomically (all target documents are opened before
+edits are applied) so the buffer pre-load workaround is not needed. File-watcher dynamic
+registration is supported out of the box. No extra configuration is required.
+
+### Other editors
+
+If your editor silently drops rename edits for files that are not currently open, apply the
+same pattern as the Neovim workaround: intercept the rename response, open/load each target
+file, then apply the edits. Consult your editor's LSP client documentation for the
+equivalent of `vim.fn.bufload`.
+
+If your editor does not support `workspace.didChangeWatchedFiles.dynamicRegistration`, the
+cross-folder index will not update when extra-folder files change on disk until the LSP
+server is restarted. A workaround is to trigger a manual reload (e.g. `:LspRestart` in
+neovim) after saving changes in the extra folder.
+
 ## File Map
 
 | File | Change |
