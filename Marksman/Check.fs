@@ -8,6 +8,7 @@ open Marksman.Paths
 open Marksman.Cst
 open Marksman.Doc
 open Marksman.Folder
+open Marksman.Workspace
 open Marksman.Diag
 
 [<RequireQualifiedAccess>]
@@ -128,14 +129,19 @@ let check (rootPath: string) (format: OutputFormat) : int =
 
             0
         | Some folder ->
+            let workspace = Workspace.ofFolders userConfig [ folder ]
             let mutable allDiags: DiagLine list = []
 
-            for docId, entries in Diag.checkFolder folder do
-                let doc = Folder.findDocById docId folder
-                let relFile = Doc.pathFromRoot doc |> RelPath.toSystem
+            for primaryFolder in Workspace.primaryFolders workspace do
+                let extraFolders = Workspace.extraFoldersFor primaryFolder workspace
+                let folderDiags = Diag.checkFolder primaryFolder extraFolders
 
-                for entry in entries do
-                    allDiags <- toDiagLine relFile entry :: allDiags
+                for docId, entries in folderDiags do
+                    let doc = Folder.findDocById docId primaryFolder
+                    let relFile = Doc.pathFromRoot doc |> RelPath.toSystem
+
+                    for entry in entries do
+                        allDiags <- toDiagLine relFile entry :: allDiags
 
             let allDiags = List.rev allDiags
 
