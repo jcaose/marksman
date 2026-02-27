@@ -234,6 +234,8 @@ module Dest =
         let docDestsArr = docDests |> Array.ofSeq
 
         if Array.isEmpty docDestsArr then
+            // Attachment resolution is intentionally limited to the primary folder.
+            // Searching extra folders for attachments is a v2 non-goal; see rfc-attachment-links.md.
             tryResolveAsAttachment folder doc srcSym
         else
             Seq.ofArray docDestsArr

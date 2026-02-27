@@ -4,6 +4,7 @@ open System.IO
 open Ionide.LanguageServerProtocol.Types
 open Xunit
 open Misc
+open Marksman.Paths
 
 let editsByFile =
     function
@@ -31,6 +32,28 @@ let editsByFile =
                 |> Map.ofSeq
             | _ -> Map.empty
     | other -> failwith ($"Edit ranges are not defined for: {other}")
+
+/// Extract (oldFilename, newFilename) from the RenameFile document change, if present.
+let attachmentRenameChange =
+    function
+    | Refactor.Edit { DocumentChanges = Some docChanges } ->
+        docChanges
+        |> Array.tryPick (function
+            | RenameFile rf -> Some(Path.GetFileName(rf.oldUri), Path.GetFileName(rf.newUri))
+            | _ -> None)
+    | _ -> None
+
+/// Extract text-edit ranges for a named file from the workspace edit produced by a rename.
+let attachmentLinkEdits filename =
+    function
+    | Refactor.Edit { DocumentChanges = Some docChanges } ->
+        docChanges
+        |> Array.choose (function
+            | TextDocumentEdit e when Path.GetFileName(e.TextDocument.Uri) = filename ->
+                Some(e.Edits |> Array.map (fun x -> x.Range, x.NewText))
+            | _ -> None)
+        |> Array.concat
+    | other -> failwith $"Expected Edit, got: {other}"
 
 module RenameTests =
     module ReferenceLinks =
@@ -196,3 +219,80 @@ module RenameTests =
                 Map.find "doc2.md" expectedRanges,
                 Map.find "doc2.md" actualRanges
             )
+
+module AttachmentRename =
+    open Marksman.Folder
+
+    /// Build a folder with one doc and one registered attachment.
+    let mkFolderWithAttachment (docContent: string) (attachRelPath: string) =
+        let doc = Helpers.FakeDoc.Mk(docContent, path = "doc.md")
+
+        let folder =
+            Helpers.FakeFolder.Mk([ doc ])
+            |> Folder.withAttachment (RelPath attachRelPath)
+
+        doc, folder
+
+    // ─── Extension handling ───────────────────────────────────────────────────
+
+    [<Fact>]
+    let extensionPreservedWhenUserProvidesStem () =
+        // User provides "newdiagram" (no extension) → file should become "newdiagram.pdf"
+        let doc, folder = mkFolderWithAttachment "[[diagram.pdf]]" "diagram.pdf"
+        // cursor is inside "diagram" part: col 2
+        let result = Refactor.rename true folder doc (Position.Mk(0, 2)) "newdiagram"
+
+        Assert.Equal(Some("diagram.pdf", "newdiagram.pdf"), attachmentRenameChange result)
+
+    [<Fact>]
+    let extensionPreservedWhenUserProvidesFull () =
+        // User provides "newdiagram.pdf" (same extension) → should not double-up
+        let doc, folder = mkFolderWithAttachment "[[diagram.pdf]]" "diagram.pdf"
+        let result = Refactor.rename true folder doc (Position.Mk(0, 2)) "newdiagram.pdf"
+
+        Assert.Equal(Some("diagram.pdf", "newdiagram.pdf"), attachmentRenameChange result)
+
+    // ─── Link text updates ────────────────────────────────────────────────────
+
+    [<Fact>]
+    let singleReferenceIsUpdated () =
+        // One [[diagram.pdf]] link → link text should change to "newdiagram.pdf"
+        let doc, folder = mkFolderWithAttachment "[[diagram.pdf]]" "diagram.pdf"
+        let result = Refactor.rename true folder doc (Position.Mk(0, 2)) "newdiagram"
+
+        let linkEdits = attachmentLinkEdits "doc.md" result
+        Assert.Equal(1, linkEdits.Length)
+        let _, newText = linkEdits[0]
+        Assert.Equal("newdiagram.pdf", newText)
+
+    [<Fact>]
+    let multipleReferencesAreAllUpdated () =
+        // Two links in the same doc referencing the same attachment
+        let content = "[[image.png]] and [[image.png]]"
+        let doc, folder = mkFolderWithAttachment content "image.png"
+        let result = Refactor.rename true folder doc (Position.Mk(0, 2)) "photo"
+
+        let linkEdits = attachmentLinkEdits "doc.md" result
+        Assert.Equal(2, linkEdits.Length)
+
+        for _, newText in linkEdits do
+            Assert.Equal("photo.png", newText)
+
+    // ─── Skip conditions ──────────────────────────────────────────────────────
+
+    [<Fact>]
+    let skipWhenCursorOutsideLink () =
+        // Cursor is at col 0 which is on the '[' bracket — outside the link content range
+        let doc, folder = mkFolderWithAttachment "[[diagram.pdf]]" "diagram.pdf"
+        let result = Refactor.rename true folder doc (Position.Mk(0, 0)) "newdiagram"
+
+        Assert.Equal(Refactor.Skip, result)
+
+    [<Fact>]
+    let skipWhenAttachmentNotRegistered () =
+        // Attachment file is NOT in folder.attachments → should fall through to Skip
+        let doc = Helpers.FakeDoc.Mk("[[diagram.pdf]]", path = "doc.md")
+        let folder = Helpers.FakeFolder.Mk([ doc ]) // no withAttachment call
+        let result = Refactor.rename true folder doc (Position.Mk(0, 2)) "newdiagram"
+
+        Assert.Equal(Refactor.Skip, result)
