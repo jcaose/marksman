@@ -112,17 +112,33 @@ module DocLink =
 [<RequireQualifiedAccess>]
 type Dest =
     | Doc of FileLink
+    | Attachment of RelPath * Folder
     | Heading of DocLink * Cst.Node<Cst.Heading>
     | LinkDef of Doc * Cst.Node<Cst.MdLinkDef>
     | Tag of Doc * Cst.Node<Cst.Tag>
 
 module Dest =
+    let tryDoc: Dest -> option<Doc> =
+        function
+        | Dest.Doc { doc = doc }
+        | Dest.LinkDef(doc, _) -> Some doc
+        | Dest.Heading(docLink, _) -> Some(DocLink.doc docLink)
+        | Dest.Tag(doc, _) -> Some doc
+        | Dest.Attachment _ -> None
+
     let doc: Dest -> Doc =
         function
         | Dest.Doc { doc = doc }
         | Dest.LinkDef(doc, _) -> doc
         | Dest.Heading(docLink, _) -> DocLink.doc docLink
         | Dest.Tag(doc, _) -> doc
+        | Dest.Attachment _ -> failwith "Dest.Attachment has no Doc"
+
+    let absPath: Dest -> option<AbsPath> =
+        function
+        | Dest.Attachment(relPath, folder) ->
+            Some(RootPath.append (Folder.rootPath folder) relPath)
+        | _ -> None
 
     let range: Dest -> Range =
         function
@@ -133,6 +149,7 @@ module Dest =
         | Dest.Heading(_, heading) -> heading.range
         | Dest.LinkDef(_, linkDef) -> linkDef.range
         | Dest.Tag(_, tag) -> tag.range
+        | Dest.Attachment _ -> Range.Mk(0, 0, 0, 0)
 
     let scope: Dest -> Range =
         function
@@ -140,8 +157,13 @@ module Dest =
         | Dest.Heading(_, heading) -> heading.data.scope
         | Dest.LinkDef(_, linkDef) -> linkDef.range
         | Dest.Tag(_, tag) -> tag.range
+        | Dest.Attachment _ -> Range.Mk(0, 0, 0, 0)
 
-    let uri (ref: Dest) : DocumentUri = doc ref |> Doc.uri
+    let uri (ref: Dest) : DocumentUri =
+        match ref with
+        | Dest.Attachment(relPath, folder) ->
+            RootPath.append (Folder.rootPath folder) relPath |> AbsPath.toUri
+        | _ -> doc ref |> Doc.uri
 
     let location (ref: Dest) : Location = { Uri = uri ref; Range = range ref }
 
@@ -161,6 +183,16 @@ module Dest =
         | Some(IntraRef(IntraSection _)) -> Implicit destDoc
         | _ -> failwith $"Link kind cannot be determined for {srcSym} symbol"
 
+    let private tryResolveAsAttachment (folder: Folder) (doc: Doc) (srcSym: Sym) : seq<Dest> =
+        match Sym.asRef srcSym with
+        | Some(CrossRef(CrossDoc name)) ->
+            let internName = InternName.mkUnchecked doc.Id name
+
+            match Folder.tryFindAttachmentByInternName internName folder with
+            | Some relPath -> Seq.singleton (Dest.Attachment(relPath, folder))
+            | None -> Seq.empty
+        | _ -> Seq.empty
+
     let tryResolveSym (folder: Folder) (doc: Doc) (srcSym: Sym) : seq<Dest> =
         let complStyle = (Folder.configOrDefault folder).ComplWikiStyle()
 
@@ -170,33 +202,41 @@ module Dest =
         let detectFileLink = detectFileLink complStyle doc.Id srcSym
         let detectDocLink = detectDocLink complStyle doc.Id srcSym
 
-        seq {
-            for destScope, destSym in destSyms do
-                match destScope with
-                | Scope.Global -> ()
-                | Scope.Doc destDocId ->
-                    let destDoc = Folder.findDocById destDocId folder
+        let docDests =
+            seq {
+                for destScope, destSym in destSyms do
+                    match destScope with
+                    | Scope.Global -> ()
+                    | Scope.Doc destDocId ->
+                        let destDoc = Folder.findDocById destDocId folder
 
-                    match destSym with
-                    | Sym.Def Doc -> Dest.Doc(detectFileLink destDoc)
-                    | Sym.Def(Title _)
-                    | Sym.Def(Header _) ->
-                        let docLink = detectDocLink destDoc
+                        match destSym with
+                        | Sym.Def Doc -> Dest.Doc(detectFileLink destDoc)
+                        | Sym.Def(Title _)
+                        | Sym.Def(Header _) ->
+                            let docLink = detectDocLink destDoc
 
-                        yield!
-                            destDoc.Structure
-                            |> Structure.findConcreteForSymbol destSym
-                            |> Seq.choose Cst.Element.asHeading
-                            |> Seq.map (fun node -> Dest.Heading(docLink, node))
-                    | Sym.Def(LinkDef _) ->
-                        yield!
-                            destDoc.Structure
-                            |> Structure.findConcreteForSymbol destSym
-                            |> Seq.choose Cst.Element.asLinkDef
-                            |> Seq.map (fun node -> Dest.LinkDef(destDoc, node))
-                    | Sym.Ref _
-                    | Sym.Tag _ -> ()
-        }
+                            yield!
+                                destDoc.Structure
+                                |> Structure.findConcreteForSymbol destSym
+                                |> Seq.choose Cst.Element.asHeading
+                                |> Seq.map (fun node -> Dest.Heading(docLink, node))
+                        | Sym.Def(LinkDef _) ->
+                            yield!
+                                destDoc.Structure
+                                |> Structure.findConcreteForSymbol destSym
+                                |> Seq.choose Cst.Element.asLinkDef
+                                |> Seq.map (fun node -> Dest.LinkDef(destDoc, node))
+                        | Sym.Ref _
+                        | Sym.Tag _ -> ()
+            }
+
+        let docDestsArr = docDests |> Array.ofSeq
+
+        if Array.isEmpty docDestsArr then
+            tryResolveAsAttachment folder doc srcSym
+        else
+            Seq.ofArray docDestsArr
 
     let tryResolveElement (folder: Folder) (doc: Doc) (element: Cst.Element) : seq<Dest> =
         match Doc.structure doc |> Structure.tryFindSymbolForConcrete element with

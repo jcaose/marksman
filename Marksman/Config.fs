@@ -153,6 +153,7 @@ type Config = {
     coreTitleFromHeading: option<bool>
     coreIncrementalReferences: option<bool>
     coreParanoid: option<bool>
+    coreAttachmentFileExtensions: option<array<string>>
     complWikiStyle: option<ComplWikiStyle>
     complCandidates: option<int>
 } with
@@ -167,6 +168,29 @@ type Config = {
         coreTitleFromHeading = Some true
         coreIncrementalReferences = Some false
         coreParanoid = Some false
+        coreAttachmentFileExtensions =
+            Some [|
+                "png"
+                "jpg"
+                "jpeg"
+                "gif"
+                "bmp"
+                "svg"
+                "webp"
+                "avif"
+                "mp3"
+                "wav"
+                "ogg"
+                "flac"
+                "m4a"
+                "3gp"
+                "mp4"
+                "mov"
+                "mkv"
+                "ogv"
+                "webm"
+                "pdf"
+            |]
         complWikiStyle = Some TitleSlug
         complCandidates = Some 50
     }
@@ -181,6 +205,7 @@ type Config = {
         coreTitleFromHeading = None
         coreIncrementalReferences = None
         coreParanoid = None
+        coreAttachmentFileExtensions = None
         complWikiStyle = None
         complCandidates = None
     }
@@ -230,6 +255,11 @@ type Config = {
         |> Option.orElse Config.Default.coreParanoid
         |> Option.get
 
+    member this.CoreAttachmentFileExtensions() =
+        this.coreAttachmentFileExtensions
+        |> Option.orElse Config.Default.coreAttachmentFileExtensions
+        |> Option.get
+
     member this.ComplWikiStyle() =
         match this.complWikiStyle with
         | Some x -> x
@@ -272,6 +302,9 @@ let private configOfTable (table: TomlTable) : LookupResult<Config> =
 
         let! coreParanoid = getFromTableOpt<bool> table [] [ "core"; "paranoid" ]
 
+        let! coreAttachmentFileExtensions =
+            getFromTableOpt<array<string>> table [] [ "core"; "attachment_file_extensions" ]
+
         let! complWikiStyle = getFromTableOpt<string> table [] [ "completion"; "wiki"; "style" ]
 
         let complWikiStyle =
@@ -302,6 +335,7 @@ let private configOfTable (table: TomlTable) : LookupResult<Config> =
             coreTitleFromHeading = coreTitleFromHeading
             coreIncrementalReferences = coreIncrementalReferences
             coreParanoid = coreParanoid
+            coreAttachmentFileExtensions = coreAttachmentFileExtensions
             complWikiStyle = complWikiStyle
             complCandidates = complCandidates
         }
@@ -328,6 +362,9 @@ module Config =
             hi.coreIncrementalReferences
             |> Option.orElse low.coreIncrementalReferences
         coreParanoid = hi.coreParanoid |> Option.orElse low.coreParanoid
+        coreAttachmentFileExtensions =
+            hi.coreAttachmentFileExtensions
+            |> Option.orElse low.coreAttachmentFileExtensions
         complWikiStyle = hi.complWikiStyle |> Option.orElse low.complWikiStyle
         complCandidates = hi.complCandidates |> Option.orElse low.complCandidates
     }
