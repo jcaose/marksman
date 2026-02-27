@@ -291,6 +291,20 @@ let testMerge_extraFolders_fallback () =
     Assert.Equal(Some [| "/user/extra" |], merged.coreExtraFolders)
 
 [<Fact>]
+let testParse_wikiStyle_title () =
+    let content =
+        """
+[completion]
+wiki.style = "title"
+"""
+
+    let actual = Config.tryParse content
+
+    let expected = { Config.Empty with complWikiStyle = Some ComplWikiStyle.Title }
+
+    Assert.Equal(Some expected, actual)
+
+[<Fact>]
 let testDefault_titleVsCompletionStyle () =
     let content =
         """
