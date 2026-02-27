@@ -260,7 +260,7 @@ let rename
     match Cst.elementAtPos pos (Doc.cst srcDoc) with
     | None -> Skip
     | Some(WL { data = wl } as el) ->
-        let dests = Dest.tryResolveElement folder srcDoc el |> Array.ofSeq
+        let dests = Dest.tryResolveElement folder Seq.empty srcDoc el |> Array.ofSeq
 
         match dests |> Array.tryPick (function Dest.Attachment(rp, f) -> Some(rp, f) | _ -> None) with
         | Some(relPath, attachFolder) ->
