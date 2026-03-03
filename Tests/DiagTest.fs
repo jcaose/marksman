@@ -140,6 +140,25 @@ let diagForMissingAttachment () =
     )
 
 [<Fact>]
+let noDiagForExistingAttachmentWithExactSubpath () =
+    let doc = FakeDoc.Mk([| "[[assets/image.png]]" |])
+    let folder = FakeFolder.Mk([ doc ]) |> Folder.withAttachment (RelPath "assets/image.png")
+    let diag = checkFolder folder |> diagToHuman
+
+    Assert.Equal<string * string>([], diag)
+
+[<Fact>]
+let diagForAttachmentWithWrongParentPath () =
+    let doc = FakeDoc.Mk([| "[[xassets/image.png]]" |])
+    let folder = FakeFolder.Mk([ doc ]) |> Folder.withAttachment (RelPath "assets/image.png")
+    let diag = checkFolder folder |> diagToHuman
+
+    Assert.Equal<string * string>(
+        [ "fake.md", "Link to non-existent document 'xassets/image.png'" ],
+        diag
+    )
+
+[<Fact>]
 let noDiagForEmbedLinkToAttachmentExtMissing () =
     // ![[image.png]] — Markdig does not parse ![[...]] as a WikiLink (the ! causes it to be
     // treated as an image directive). So no wiki-link diagnostic is produced regardless.

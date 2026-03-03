@@ -100,8 +100,8 @@ never handed to our `WikiLinkParser`. As a result:
 
 `Dest.tryResolveSym` first tries the existing symbol-graph resolution (markdown docs, headings,
 etc.). If that returns no results, it calls `tryResolveAsAttachment`, which calls
-`Folder.tryFindAttachmentByInternName`. This tries exact `RelPath` match first, then
-filename-only suffix match (same heuristic as markdown doc lookup).
+`Folder.tryFindAttachmentByInternName`. Attachment resolution requires exact `RelPath`
+match; filename-only fallback is intentionally not used.
 
 ### Diagnostics
 
