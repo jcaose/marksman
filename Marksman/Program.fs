@@ -103,27 +103,35 @@ let main args =
     let checkPath =
         Input.argument "[PATH]"
         |> Input.defaultValue "."
-        |> Input.desc "Workspace root directory to check (default: current directory)"
+        |> Input.desc "Workspace directory or markdown file to check (default: current directory)"
 
     let checkFormat =
         Input.option "--format"
         |> Input.defaultValue "text"
         |> Input.desc "Output format: 'text' (default) or 'json'"
 
-    let runCheck (args: string * string) : int =
-        let path, fmt = args
+    let checkRoot =
+        Input.option "--root"
+        |> Input.defaultValue ""
+        |> Input.desc "Override workspace root directory"
+
+    let runCheck (args: string * string * string) : int =
+        let path, fmt, root = args
 
         let format =
             match fmt.ToLower() with
             | "json" -> OutputFormat.Json
             | _ -> OutputFormat.Text
 
-        Check.check path format
+        let rootOverride =
+            if String.IsNullOrWhiteSpace(root) then None else Some root
+
+        Check.check path rootOverride format
 
     let checkCommand =
         command "check" {
             description "Check workspace for broken links and other issues"
-            inputs (checkPath, checkFormat)
+            inputs (checkPath, checkFormat, checkRoot)
             setAction runCheck
         }
 
