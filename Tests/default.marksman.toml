@@ -34,13 +34,18 @@ incremental_references = false
 # For debugging only! Enables extra validation checks around
 # incremental state updates. SIGNIFICANTLY IMPACTS PERFORMANCE
 paranoid = false
-# File extensions treated as attachments (images, audio, video, PDFs).
+# File extensions treated as attachments (images, audio, video, docs, and data/archive files).
 # Links to attachment files are not flagged as broken links.
 attachment_file_extensions = [
   "png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "avif",
   "mp3", "wav", "ogg", "flac", "m4a", "3gp",
   "mp4", "mov", "mkv", "ogv", "webm",
-  "pdf"
+  "pdf",
+  "xls", "xlsx", "xlsm", "xltx", "xltm",
+  "doc", "docx", "docm", "dotx", "dotm",
+  "ppt", "pptx", "pptm", "potx", "potm", "ppsx", "ppsm",
+  "zip", "7z", "tar", "gz", "bz2", "xz", "lz",
+  "parquet", "json", "jsonl", "ndjson", "csv", "tsv"
 ]
 
 [code_action]

@@ -123,6 +123,15 @@ module IsAttachmentFileTests =
         Assert.True(isAttachmentFile defaultAttachExts "document.pdf")
 
     [<Fact>]
+    let officeAndDataExtensionsAreAttachments () =
+        Assert.True(isAttachmentFile defaultAttachExts "sheet.xlsx")
+        Assert.True(isAttachmentFile defaultAttachExts "slides.pptx")
+        Assert.True(isAttachmentFile defaultAttachExts "report.docx")
+        Assert.True(isAttachmentFile defaultAttachExts "archive.zip")
+        Assert.True(isAttachmentFile defaultAttachExts "data.parquet")
+        Assert.True(isAttachmentFile defaultAttachExts "events.ndjson")
+
+    [<Fact>]
     let markdownIsNotAttachment () =
         Assert.False(isAttachmentFile defaultAttachExts "doc.md")
         Assert.False(isAttachmentFile defaultAttachExts "doc.markdown")
