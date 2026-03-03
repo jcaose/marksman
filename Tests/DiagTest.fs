@@ -143,7 +143,7 @@ let diagForMissingAttachment () =
 let noDiagForExistingAttachmentWithExactSubpath () =
     let doc = FakeDoc.Mk([| "[[assets/image.png]]" |])
     let folder = FakeFolder.Mk([ doc ]) |> Folder.withAttachment (RelPath "assets/image.png")
-    let diag = checkFolder folder |> diagToHuman
+    let diag = checkFolder folder Seq.empty |> diagToHuman
 
     Assert.Equal<string * string>([], diag)
 
@@ -151,7 +151,7 @@ let noDiagForExistingAttachmentWithExactSubpath () =
 let diagForAttachmentWithWrongParentPath () =
     let doc = FakeDoc.Mk([| "[[xassets/image.png]]" |])
     let folder = FakeFolder.Mk([ doc ]) |> Folder.withAttachment (RelPath "assets/image.png")
-    let diag = checkFolder folder |> diagToHuman
+    let diag = checkFolder folder Seq.empty |> diagToHuman
 
     Assert.Equal<string * string>(
         [ "fake.md", "Link to non-existent document 'xassets/image.png'" ],
