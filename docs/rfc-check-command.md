@@ -26,9 +26,14 @@ Add a `marksman check [PATH]` subcommand that:
 1. Loads the workspace at `PATH` (defaults to `cwd`) exactly as the LSP server
    would — respecting `.marksman.toml`, `extra_folders`, the user config, and
    all configured markdown extensions.
-2. Computes all diagnostics using the same engine as the LSP diagnostic path.
-3. Prints them to stdout in a machine-readable, grep-friendly format.
-4. Exits with code **0** if no diagnostics, **1** if any diagnostics are found.
+2. Also supports file input while preserving workspace context:
+   - if `PATH` is a file, infer workspace root from ancestors in this order:
+     1) nearest `.marksman.toml`, 2) nearest `.git`, 3) file parent directory.
+   - `--root <DIR>` overrides inferred root.
+   - diagnostics are scoped to the target file when file input is used.
+3. Computes all diagnostics using the same engine as the LSP diagnostic path.
+4. Prints them to stdout in a machine-readable, grep-friendly format.
+5. Exits with code **0** if no diagnostics, **1** if any diagnostics are found.
 
 ## Non-Goals
 
@@ -99,11 +104,12 @@ If there are no diagnostics the array is `[]` and exit code is 0.
 marksman check [OPTIONS] [PATH]
 
 Arguments:
-  [PATH]   Root directory of the workspace to check.
+  [PATH]   Workspace directory or a markdown file path.
            Defaults to the current working directory.
 
 Options:
   --format <text|json>   Output format (default: text)
+  --root <DIR>           Explicit workspace root (overrides inference for file input)
   --verbose / -v         Increase log verbosity (same as `server`)
 ```
 
@@ -194,13 +200,10 @@ Tests live in `Tests/CheckTests.fs`:
 
 | Test | What it verifies |
 |---|---|
-| `check_cleanWorkspace_exits0` | Workspace with no broken links → 0 diagnostics |
-| `check_brokenWikiLink_reported` | Broken wiki link → 1 error, correct file/line/col |
-| `check_brokenMarkdownLink_reported` | Broken markdown link → 1 warning |
-| `check_ambiguousLink_reported` | Ambiguous link → 1 error |
-| `check_extraFolderResolves_noDiag` | Link to extra-folder doc → no diagnostic |
-| `check_jsonFormat_validJson` | `--format json` produces parseable JSON array |
-| `check_noFiles_exits0` | Empty directory → 0 diagnostics, exit 0 |
+| `check_fileTarget_usesInferredWorkspaceRoot` | File input resolves against inferred workspace root |
+| `check_fileTarget_scopesDiagnosticsToThatFile` | File input reports only target file diagnostics |
+| `check_fileTarget_fallsBackToParentWithoutWorkspaceMarkers` | No markers → fallback to file parent root |
+| `check_rootOverride_takesPrecedenceForFileTarget` | `--root` overrides inferred root for file input |
 
 ## Usage Examples
 
