@@ -835,13 +835,7 @@ module Folder =
             | None -> None
             | Some internPath ->
                 let relPath = InternPath.toRel internPath
-                // Exact match first
                 if Set.contains relPath atts then
                     Some relPath
                 else
-                    // Filename-only suffix match
-                    let targetFilename = RelPath.filename relPath
-
-                    atts
-                    |> Set.toSeq
-                    |> Seq.tryFind (fun ap -> RelPath.filename ap = targetFilename)
+                    None

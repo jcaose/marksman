@@ -54,12 +54,17 @@ Add to `.marksman.toml` under `[core]`:
 [core]
 # File extensions treated as attachment files.
 # Wiki links to these extensions are not flagged as broken links.
-# Default: Obsidian's full list (images + audio + video + PDF).
+# Default: Obsidian's full list (images + audio + video + PDF), plus common office/data/archive files.
 attachment_file_extensions = [
   "png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "avif",
   "mp3", "wav", "ogg", "flac", "m4a", "3gp",
   "mp4", "mov", "mkv", "ogv", "webm",
-  "pdf"
+  "pdf",
+  "xls", "xlsx", "xlsm", "xltx", "xltm",
+  "doc", "docx", "docm", "dotx", "dotm",
+  "ppt", "pptx", "pptm", "potx", "potm", "ppsx", "ppsm",
+  "zip", "7z", "tar", "gz", "bz2", "xz", "lz",
+  "parquet", "json", "jsonl", "ndjson", "csv", "tsv"
 ]
 ```
 
@@ -95,8 +100,8 @@ never handed to our `WikiLinkParser`. As a result:
 
 `Dest.tryResolveSym` first tries the existing symbol-graph resolution (markdown docs, headings,
 etc.). If that returns no results, it calls `tryResolveAsAttachment`, which calls
-`Folder.tryFindAttachmentByInternName`. This tries exact `RelPath` match first, then
-filename-only suffix match (same heuristic as markdown doc lookup).
+`Folder.tryFindAttachmentByInternName`. Attachment resolution requires exact `RelPath`
+match; filename-only fallback is intentionally not used.
 
 ### Diagnostics
 
