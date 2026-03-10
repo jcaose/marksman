@@ -35,7 +35,7 @@ incremental_references = false
 # incremental state updates. SIGNIFICANTLY IMPACTS PERFORMANCE
 paranoid = false
 # File extensions treated as attachments (images, audio, video, docs, and data/archive files).
-# Links to attachment files are not flagged as broken links.
+# Setting this replaces the default attachment extension list.
 attachment_file_extensions = [
   "png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "avif",
   "mp3", "wav", "ogg", "flac", "m4a", "3gp",
@@ -47,6 +47,8 @@ attachment_file_extensions = [
   "zip", "7z", "tar", "gz", "bz2", "xz", "lz",
   "parquet", "json", "jsonl", "ndjson", "csv", "tsv"
 ]
+# Additional attachment extensions to append to the configured/default list.
+# attachment_file_extensions_add = ["drawio"]
 
 [code_action]
 # Enable/disable "Table of Contents" code action

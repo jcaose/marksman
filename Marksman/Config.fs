@@ -154,6 +154,7 @@ type Config = {
     coreIncrementalReferences: option<bool>
     coreParanoid: option<bool>
     coreAttachmentFileExtensions: option<array<string>>
+    coreAttachmentFileExtensionsAdd: option<array<string>>
     complWikiStyle: option<ComplWikiStyle>
     complCandidates: option<int>
 } with
@@ -221,6 +222,7 @@ type Config = {
                 "csv"
                 "tsv"
             |]
+        coreAttachmentFileExtensionsAdd = None
         complWikiStyle = Some TitleSlug
         complCandidates = Some 50
     }
@@ -236,6 +238,7 @@ type Config = {
         coreIncrementalReferences = None
         coreParanoid = None
         coreAttachmentFileExtensions = None
+        coreAttachmentFileExtensionsAdd = None
         complWikiStyle = None
         complCandidates = None
     }
@@ -286,9 +289,14 @@ type Config = {
         |> Option.get
 
     member this.CoreAttachmentFileExtensions() =
-        this.coreAttachmentFileExtensions
-        |> Option.orElse Config.Default.coreAttachmentFileExtensions
-        |> Option.get
+        let baseExts =
+            this.coreAttachmentFileExtensions
+            |> Option.orElse Config.Default.coreAttachmentFileExtensions
+            |> Option.get
+
+        let addedExts = this.coreAttachmentFileExtensionsAdd |> Option.defaultValue [||]
+
+        Seq.append baseExts addedExts |> Seq.distinct |> Array.ofSeq
 
     member this.ComplWikiStyle() =
         match this.complWikiStyle with
@@ -335,6 +343,9 @@ let private configOfTable (table: TomlTable) : LookupResult<Config> =
         let! coreAttachmentFileExtensions =
             getFromTableOpt<array<string>> table [] [ "core"; "attachment_file_extensions" ]
 
+        let! coreAttachmentFileExtensionsAdd =
+            getFromTableOpt<array<string>> table [] [ "core"; "attachment_file_extensions_add" ]
+
         let! complWikiStyle = getFromTableOpt<string> table [] [ "completion"; "wiki"; "style" ]
 
         let complWikiStyle =
@@ -366,6 +377,7 @@ let private configOfTable (table: TomlTable) : LookupResult<Config> =
             coreIncrementalReferences = coreIncrementalReferences
             coreParanoid = coreParanoid
             coreAttachmentFileExtensions = coreAttachmentFileExtensions
+            coreAttachmentFileExtensionsAdd = coreAttachmentFileExtensionsAdd
             complWikiStyle = complWikiStyle
             complCandidates = complCandidates
         }
@@ -395,6 +407,12 @@ module Config =
         coreAttachmentFileExtensions =
             hi.coreAttachmentFileExtensions
             |> Option.orElse low.coreAttachmentFileExtensions
+        coreAttachmentFileExtensionsAdd =
+            match hi.coreAttachmentFileExtensionsAdd, low.coreAttachmentFileExtensionsAdd with
+            | Some hiAdd, Some lowAdd -> Some(Array.append lowAdd hiAdd)
+            | Some hiAdd, None -> Some hiAdd
+            | None, Some lowAdd -> Some lowAdd
+            | None, None -> None
         complWikiStyle = hi.complWikiStyle |> Option.orElse low.complWikiStyle
         complCandidates = hi.complCandidates |> Option.orElse low.complCandidates
     }
