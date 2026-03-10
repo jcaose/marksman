@@ -144,6 +144,24 @@ markdown.glfm_heading_ids.enable = true
     Assert.Equal(Some expected, actual)
 
 [<Fact>]
+let testParse_attachmentFileExtensionsAdd () =
+    let content =
+        """
+[core]
+attachment_file_extensions_add = ["drawio", "excalidraw"]
+"""
+
+    let actual = Config.tryParse content
+
+    let expected =
+        {
+            Config.Empty with
+                coreAttachmentFileExtensionsAdd = Some [| "drawio"; "excalidraw" |]
+        }
+
+    Assert.Equal(Some expected, actual)
+
+[<Fact>]
 let testParse_broken_0 () =
     let content =
         """
@@ -318,3 +336,51 @@ title_from_heading = false
 
     Assert.False(actual.CoreTitleFromHeading())
     Assert.Equal(ComplWikiStyle.FileStem, actual.ComplWikiStyle())
+
+[<Fact>]
+let attachmentFileExtensionsAdd_extendsDefaults () =
+    let content =
+        """
+[core]
+attachment_file_extensions_add = ["drawio", "svg"]
+"""
+
+    let actual =
+        Config.tryParse content
+        |> Option.defaultWith (fun () -> failwith "Expected a successful parse")
+
+    let attachExts = actual.CoreAttachmentFileExtensions() |> Set.ofArray
+
+    Assert.Contains("png", attachExts)
+    Assert.Contains("svg", attachExts)
+    Assert.Contains("drawio", attachExts)
+
+[<Fact>]
+let attachmentFileExtensions_overrideStillReplacesBaseList () =
+    let content =
+        """
+[core]
+attachment_file_extensions = ["drawio"]
+attachment_file_extensions_add = ["svg"]
+"""
+
+    let actual =
+        Config.tryParse content
+        |> Option.defaultWith (fun () -> failwith "Expected a successful parse")
+
+    Assert.Equal<string array>([| "drawio"; "svg" |], actual.CoreAttachmentFileExtensions())
+
+[<Fact>]
+let merge_attachmentFileExtensionsAdd_accumulatesAcrossLayers () =
+    let low =
+        {
+            Config.Empty with
+                coreAttachmentFileExtensions = Some [||]
+                coreAttachmentFileExtensionsAdd = Some [| "drawio" |]
+        }
+
+    let hi = { Config.Empty with coreAttachmentFileExtensionsAdd = Some [| "excalidraw" |] }
+
+    let merged = Config.merge hi low
+
+    Assert.Equal<string array>([| "drawio"; "excalidraw" |], merged.CoreAttachmentFileExtensions())

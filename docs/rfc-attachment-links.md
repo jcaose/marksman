@@ -55,6 +55,7 @@ Add to `.marksman.toml` under `[core]`:
 # File extensions treated as attachment files.
 # Wiki links to these extensions are not flagged as broken links.
 # Default: Obsidian's full list (images + audio + video + PDF), plus common office/data/archive files.
+# Setting this key replaces that default list.
 attachment_file_extensions = [
   "png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "avif",
   "mp3", "wav", "ogg", "flac", "m4a", "3gp",
@@ -66,6 +67,9 @@ attachment_file_extensions = [
   "zip", "7z", "tar", "gz", "bz2", "xz", "lz",
   "parquet", "json", "jsonl", "ndjson", "csv", "tsv"
 ]
+
+# Add extra attachment extensions without replacing the base list.
+attachment_file_extensions_add = ["drawio"]
 ```
 
 Set to `[]` to disable attachment recognition entirely:
@@ -91,6 +95,8 @@ never handed to our `WikiLinkParser`. As a result:
 ### New types and helpers
 
 - `Config.coreAttachmentFileExtensions` — `option<array<string>>` field parsed from TOML.
+- `Config.coreAttachmentFileExtensionsAdd` — additive attachment extensions appended to the
+  configured/default base list.
 - `Misc.isAttachmentFile` — mirrors `isMarkdownFile` but for attachment extensions.
 - `MultiFile.attachments: Set<RelPath>` — set of relative paths for attachment files in the
   folder, populated at load time by `Folder.loadAttachments`.
